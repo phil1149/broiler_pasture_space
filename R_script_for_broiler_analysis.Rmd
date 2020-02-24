@@ -1,0 +1,194 @@
+---
+title: "Chicken analysis"
+author: "Hannah Phillips"
+date: "February 24, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include = F}
+library(readxl)
+library(tidyverse)
+library(lme4) #lmer
+library(lmerTest) # KR ddf
+library(MuMIn) #r.squaredGLMM
+library(ggplot2) #plots
+library(merTools)
+library(afex) #CIs
+
+dat <- read_excel("C:/Users/Hannah/Desktop/Chicken project/Behavior/Chicken behavior.xlsx", 
+                  sheet = "Pen avg") %>% 
+  filter(Week != 4 & Week != 11) %>% 
+  mutate(HeatIndex = (HeatIndex-32)*5/9) %>%
+  mutate(`Wind speed` = `Wind speed`/2.237) %>%
+  mutate(locomotion = (Walk+Run)) %>%
+  mutate(sitting =`Social-active` + `Alone-active`) %>%
+  mutate_at(vars(Rep, Density, Daytime), as.factor) %>%
+  dplyr::select(Rep, Age:Hum, HeatIndex:Stand, locomotion:sitting, `Total asleep`, `Dust bathe`:Stretch, AGGRESSION, Forage, Pant) %>%
+  rename(windSpeed =`Wind speed`) %>%
+  rename(solarRad = `Solar rad`) %>%
+  rename(asleep = `Total asleep`) %>%
+  rename(aggression = AGGRESSION)
+
+dat[,14:17] = dat[,14:17]/60
+
+#aggregate data by day
+datAgg = aggregate(dat[,8:27], by = list(Rep = dat$Rep, Density = dat$Density, Age = dat$Age), mean)
+datAgg[,10:23] = asin(sqrt(datAgg[,10:23]))
+```
+
+# Create dataset to use for predictions & function
+```{r, include = F}
+#create data to make predictions from
+newDat = data.frame(Age = rep(34:77, 2), 
+                    Density = c(rep("High", 44), 
+                               rep("Low", 44)), 
+                    Rep = NA)
+
+#create prediction function
+predict.fun <- function(my.lmm) {
+  predict(my.lmm, newdata = newDat, re.form = NA) 
+}
+```
+
+```{r}
+##### standing
+#model
+standing.m1 = lmer(Stand ~ poly(Age, 2)*Density + (Age|Rep:Density), 
+            data = within(datAgg, 
+                          Density <- relevel(Density, ref = "Low")))
+
+standing.m2 = lmer(Stand ~ poly(HeatIndex, 2)*Density + (Age|Rep:Density), 
+            data = within(datAgg, 
+                          Density <- relevel(Density, ref = "Low")))
+
+anova(standing.m2l, standing.m2q, standing.m2c)
+
+#diagnostics
+as.data.frame(VarCorr(standing.m))
+lattice::qqmath(standing.m2, id = 0.05)
+plot(standing.m2, sqrt(abs(resid(.))) ~ fitted(.),
+type = c("p", "smooth"))
+
+#results
+summary(standing.m, ddf = "Kenward-Roger")
+round(confint(standing.m), 4)
+anova(standing.m2, ddf = "Kenward-Roger")
+
+#R squared
+MuMIn::r.squaredGLMM(standing.m1)
+
+
+##### sitting
+#model
+sitting.m1 = lmer(sitting ~ poly(Age, 2)*Density + (Age|Rep:Density), 
+            data = within(datAgg, 
+                          Density <- relevel(Density, ref = "Low")))
+sitting.m2 = lmer(sitting ~ HeatIndex*Density + (Age|Rep:Density), 
+            data = within(datAgg, 
+                          Density <- relevel(Density, ref = "Low")))
+
+anova(sitting.m2l, sitting.m2q)
+
+#diagnostics
+lattice::qqmath(sitting.m2, id = 0.05)
+plot(sitting.m2, sqrt(abs(resid(.))) ~ fitted(.),
+type = c("p", "smooth"))
+
+#results
+anova(sitting.m2, ddf = "Kenward-Roger")
+
+#R squared
+MuMIn::r.squaredGLMM(sitting.m2)
+
+##### locomotion
+#model
+locomotion.m1 = lmer(locomotion ~ poly(Age, 2)*Density + (Age|Rep:Density), 
+            data = within(datAgg, 
+                          Density <- relevel(Density, ref = "Low")))
+locomotion.m2 = lmer(locomotion ~ HeatIndex*Density + (Age|Rep:Density), 
+            data = within(datAgg, 
+                          Density <- relevel(Density, ref = "Low")))
+
+anova(locomotion.m2l, locomotion.m2q)
+#diagnostics
+lattice::qqmath(locomotion.m, id = 0.05)
+plot(locomotion.m, sqrt(abs(resid(.))) ~ fitted(.),
+type = c("p", "smooth"))
+
+#results
+anova(locomotion.m2, ddf = "Kenward-Roger")
+
+#R squared
+MuMIn::r.squaredGLMM(locomotion.m)
+
+##### preen
+#model
+preen.m = lmer(Preen ~ Age*Density + (Age|Rep:Density), 
+            data = within(datAgg, 
+                          Density <- relevel(Density, ref = "Low")))
+
+preen.m2 = lmer(Preen ~ poly(HeatIndex, 2)*Density + (Age|Rep:Density), 
+            data = within(datAgg, 
+                          Density <- relevel(Density, ref = "Low")))
+
+anova(preen.m2l, preen.m2q, preen.m2c)
+#diagnostics
+lattice::qqmath(preen.m, id = 0.05)
+plot(preen.m, sqrt(abs(resid(.))) ~ fitted(.),
+type = c("p", "smooth"))
+
+#results
+anova(preen.m2, ddf = "Kenward-Roger")
+
+#R squared
+MuMIn::r.squaredGLMM(preen.m)
+
+##### aggression
+#model
+aggression.m1 = lmer(aggression ~ poly(Age,2)*Density + (Age|Rep:Density), 
+            data = within(datAgg, 
+                          Density <- relevel(Density, ref = "Low")))
+aggression.m2 = lmer(aggression ~ HeatIndex*Density + (Age|Rep:Density), 
+            data = within(datAgg, 
+                          Density <- relevel(Density, ref = "Low")))
+
+anova(aggression.m2l, aggression.m2q)
+#diagnostics
+lattice::qqmath(aggression.q, id = 0.05)
+plot(aggression.q, sqrt(abs(resid(.))) ~ fitted(.),
+type = c("p", "smooth"))
+
+#results
+anova(aggression.m2, ddf = "Kenward-Roger")
+
+#R squared
+MuMIn::r.squaredGLMM(aggression.q)
+
+##### forage
+#model
+forage.m1 = lmer(Forage ~ poly(Age,2)*Density + (Age|Rep:Density), 
+            data = within(datAgg, 
+                          Density <- relevel(Density, ref = "Low")))
+forage.m2 = lmer(Forage ~ HeatIndex*Density + (Age|Rep:Density), 
+            data = within(datAgg, 
+                          Density <- relevel(Density, ref = "Low")))
+
+anova(forage.m2l,forage.m2q)
+
+#diagnostics
+lattice::qqmath(forage.m, id = 0.05)
+plot(forage.m, sqrt(abs(resid(.))) ~ fitted(.),
+type = c("p", "smooth"))
+
+#results
+anova(forage.m2, ddf = "Kenward-Roger")
+
+#R squared
+MuMIn::r.squaredGLMM(forage.m)
+```
+
